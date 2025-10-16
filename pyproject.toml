@@ -1,0 +1,21 @@
+[project]
+name = "speech-dtw"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "Rayhan Fadhlan", email = "rayhanfazka07@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "numpy>=2.3.4",
+    "python-speech-features>=0.6",
+    "scipy>=1.16.2",
+]
+
+[project.scripts]
+speech-dtw = "speech_dtw:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
