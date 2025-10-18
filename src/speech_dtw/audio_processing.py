@@ -34,12 +34,9 @@ def compute_mfcc_features(
         signal,
         samplerate=sample_rate,
         numcep=numcep,
-        nfilt=26,
         nfft=nfft,
         winlen=winlen,
         winstep=winstep,
-        preemph=0.97,
-        appendEnergy=True,
     )
     delta_feat = delta(base, 2)
     delta_delta = delta(delta_feat, 2)

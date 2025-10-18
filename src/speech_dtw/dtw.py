@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import math
 from typing import Callable, Iterable, List, Sequence, Tuple
 
 import numpy as np
@@ -28,28 +27,34 @@ def dtw_path(
     for i in range(1, n + 1):
         for j in range(1, m + 1):
             d = distance(ref[i - 1], seq[j - 1])
-            cost[i, j] = d + min(cost[i - 1, j], cost[i, j - 1], cost[i - 1, j - 1])
+
+            min_cost = cost[i, j - 1]
+
+            min_cost = min(min_cost, cost[i - 1, j - 1])
+
+            if i > 1:
+                min_cost = min(min_cost, cost[i - 2, j - 1])
+
+            cost[i, j] = d + min_cost
 
     path: List[Tuple[int, int]] = []
     i, j = n, m
     while i > 0 and j > 0:
         path.append((i - 1, j - 1))
-        prev = (cost[i - 1, j], cost[i, j - 1], cost[i - 1, j - 1])
-        step = int(np.argmin(prev))
-        if step == 0:
-            i -= 1
-        elif step == 1:
-            j -= 1
-        else:
-            i -= 1
-            j -= 1
 
-    while i > 0:
-        i -= 1
-        path.append((i, 0))
-    while j > 0:
-        j -= 1
-        path.append((0, j))
+
+        prev_costs = [cost[i, j - 1]]
+        prev_steps = [(i, j - 1)]
+
+        prev_costs.append(cost[i - 1, j - 1])
+        prev_steps.append((i - 1, j - 1))
+
+        if i > 1:
+            prev_costs.append(cost[i - 2, j - 1])
+            prev_steps.append((i - 2, j - 1))
+
+        step_idx = int(np.argmin(prev_costs))
+        i, j = prev_steps[step_idx]
 
     path.reverse()
     return float(cost[n, m]), path
@@ -78,13 +83,38 @@ def dtw_template_distance(
     cost = np.full((n + 1, m + 1), np.inf, dtype=np.float64)
     cost[0, 0] = 0.0
 
+    D = sample[0].shape[0] if n > 0 else means[0].shape[0]
+
+    log_2pi_D = D * np.log(2 * np.pi)
+
     for i in range(1, n + 1):
         x = sample[i - 1]
         for j in range(1, m + 1):
+
+            # formula Negative Gaussian Log Likelihood
+            # d(x,m_j) = 0.5 * log((2*pi)^D * |C_j|) + 0.5 * (x-m_j)^T * C_j^-1 * (x-m_j)
+
             diff = x - means[j - 1]
             inv = cov_inverses[j - 1]
-            # Mahalanobis distance with log-det penalty for covariance volume
-            dist = math.sqrt(float(diff.T @ inv @ diff)) + 0.5 * log_dets[j - 1]
-            cost[i, j] = dist + min(cost[i - 1, j], cost[i, j - 1], cost[i - 1, j - 1])
+            log_det = log_dets[j - 1]
+
+            #0.5 * (x-m_j)^T * C_j^-1 * (x-m_j)
+            mahalanobis_part = 0.5 * float(diff.T @ inv @ diff)
+
+            # 0.5 * log((2*pi)^D * |C_j|)
+            # =  0.5 * (D * log(2*pi) + log|C_j|)
+            # using log(a*b) = log(a) + log(b)
+            log_det_part = 0.5 * (log_2pi_D + log_det)
+
+            dist = mahalanobis_part + log_det_part
+
+            min_cost = cost[i, j - 1]
+
+            min_cost = min(min_cost, cost[i - 1, j - 1])
+
+            if i > 1:
+                min_cost = min(min_cost, cost[i - 2, j - 1])
+
+            cost[i, j] = dist + min_cost
 
     return float(cost[n, m])
