@@ -27,3 +27,7 @@ uv.lock
 .DS_Store
 Thumbs.db
 AGENTS.md
+
+#Output Image
+confusion_matrix_closed_set.png
+confusion_matrix_open_set.png

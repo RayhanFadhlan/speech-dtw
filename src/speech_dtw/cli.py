@@ -6,16 +6,19 @@ from pathlib import Path
 from typing import Dict, Iterable, List, Tuple
 
 import numpy as np
+import matplotlib.pyplot as plt
+from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
+from tqdm import tqdm
 
 from .audio_processing import compute_mfcc_features, load_wav
-from .dataset import Recording, discover_recordings, filter_recordings
+from .dataset import VOWELS, Recording, discover_recordings, filter_recordings
 from .recognizer import DTWRecognizer
 from .template_builder import build_templates_by_vowel
 
 
 def compute_features(recordings: Iterable[Recording]) -> Dict[Recording, np.ndarray]:
     feature_map: Dict[Recording, np.ndarray] = {}
-    for rec in recordings:
+    for rec in tqdm(recordings, desc="Computing features"):
         rate, signal = load_wav(str(rec.path))
         features = compute_mfcc_features(signal, rate)
         feature_map[rec] = features
@@ -26,18 +29,40 @@ def evaluate(
     recognizer: DTWRecognizer,
     records: Iterable[Recording],
     features: Dict[Recording, np.ndarray],
-) -> Tuple[int, int, List[Tuple[Recording, str]]]:
+    desc: str = "Evaluating",
+) -> Tuple[int, int, List[str], List[str]]:
     correct = 0
     total = 0
-    predictions: List[Tuple[Recording, str]] = []
-    for rec in records:
+    y_true: List[str] = []
+    y_pred: List[str] = []
+
+    # Added tqdm progress bar here
+    for rec in tqdm(records, desc=desc):
         total += 1
         seq = features[rec]
         result = recognizer.predict(seq)
-        predictions.append((rec, result.predicted_vowel))
+
+        y_true.append(rec.vowel)
+        y_pred.append(result.predicted_vowel)
+
         if result.predicted_vowel == rec.vowel:
             correct += 1
-    return correct, total, predictions
+
+    return correct, total, y_true, y_pred
+
+
+def plot_confusion_matrix(
+    y_true: List[str],
+    y_pred: List[str],
+    title: str,
+    output_path: Path,
+) -> None:
+    cm = confusion_matrix(y_true, y_pred, labels=VOWELS)
+    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=VOWELS)
+    disp.plot(cmap=plt.cm.Blues)
+    plt.title(title)
+    plt.savefig(output_path)
+    print(f"Saved confusion matrix to {output_path}")
 
 
 def main(argv: List[str] | None = None) -> None:
@@ -79,8 +104,13 @@ def main(argv: List[str] | None = None) -> None:
     templates = build_templates_by_vowel(vowel_sequences)
     recognizer = DTWRecognizer(templates)
 
-    closed_correct, closed_total, _ = evaluate(recognizer, closed_records, features)
-    open_correct, open_total, _ = evaluate(recognizer, test_records, features)
+    # Pass descriptions for the progress bars
+    closed_correct, closed_total, closed_true, closed_pred = evaluate(
+        recognizer, closed_records, features, desc="Closed-set evaluation"
+    )
+    open_correct, open_total, open_true, open_pred = evaluate(
+        recognizer, test_records, features, desc="Open-set evaluation"
+    )
 
     closed_acc = closed_correct / closed_total if closed_total else 0.0
     open_acc = open_correct / open_total if open_total else 0.0
@@ -89,3 +119,18 @@ def main(argv: List[str] | None = None) -> None:
     print(f"Closed-set accuracy: {closed_correct}/{closed_total} = {closed_acc:.3f}")
     print(f"Open-set accuracy:   {open_correct}/{open_total} = {open_acc:.3f}")
     print(f"Average accuracy:    {avg_acc:.3f}")
+
+    if closed_total > 0:
+        plot_confusion_matrix(
+            closed_true,
+            closed_pred,
+            "Confusion Matrix (Closed-set)",
+            Path("confusion_matrix_closed_set.png"),
+        )
+    if open_total > 0:
+        plot_confusion_matrix(
+            open_true,
+            open_pred,
+            "Confusion Matrix (Open-set)",
+            Path("confusion_matrix_open_set.png"),
+        )
